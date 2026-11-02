@@ -1,0 +1,511 @@
+-- ============================================================================
+-- SILE MASTER UTILITY SUITE v7.5 - STABLE LOCK EDITION
+-- Author: MrDon
+-- ============================================================================
+
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Xóa UI cũ nếu bị trùng lặp
+if CoreGui:FindFirstChild("SileMasterUtilitySuiteV7") then
+    CoreGui.SileMasterUtilitySuiteV7:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SileMasterUtilitySuiteV7"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+-- ============================================================================
+-- 1. HỆ THỐNG TARGET INDICATOR & CAMERA LOCK (ƯU TIÊN CHẠY ĐẦU TIÊN)
+-- ============================================================================
+local activeBillboard = nil
+
+local function createTargetIndicator(targetPart)
+    if activeBillboard then activeBillboard:Destroy() end
+    if not targetPart or not targetPart.Parent then return end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "LockIndicator"
+    billboard.Size = UDim2.new(0, 40, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Adornee = targetPart
+    billboard.Parent = targetPart
+    
+    local ring = Instance.new("Frame", billboard)
+    ring.Size = UDim2.new(1, 0, 1, 0)
+    ring.BackgroundTransparency = 1
+    
+    local stroke = Instance.new("UIStroke", ring)
+    stroke.Color = Color3.fromRGB(0, 255, 200)
+    stroke.Thickness = 2.5
+    
+    local dot = Instance.new("Frame", ring)
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
+    dot.Position = UDim2.new(0.5, 0, 0.5, 0)
+    dot.Size = UDim2.new(0, 6, 0, 6)
+    dot.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    
+    activeBillboard = billboard
+end
+
+local function removeTargetIndicator()
+    if activeBillboard then
+        activeBillboard:Destroy()
+        activeBillboard = nil
+    end
+end
+
+local cameraLockActive = false
+local lockedTarget = nil
+local lockConn = nil
+
+local function getClosestPlayer()
+    local closest, shortest = nil, math.huge
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                if dist < shortest then shortest = dist; closest = p.Character.HumanoidRootPart end
+            end
+        end
+    end
+    return closest
+end
+
+-- Nút tâm súng nổi trên màn hình điện thoại (Đảm bảo luôn hiển thị)
+local MobileLockBtn = Instance.new("TextButton", ScreenGui)
+MobileLockBtn.Name = "MobileLockBtn"
+MobileLockBtn.Position = UDim2.new(0.82, 0, 0.2, 0)
+MobileLockBtn.Size = UDim2.new(0, 58, 0, 58)
+MobileLockBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 30)
+MobileLockBtn.BackgroundTransparency = 0.2
+MobileLockBtn.Font = Enum.Font.GothamBold
+MobileLockBtn.Text = "🎯"
+MobileLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MobileLockBtn.TextSize = 24
+MobileLockBtn.Active = true
+MobileLockBtn.Draggable = true
+
+Instance.new("UICorner", MobileLockBtn).CornerRadius = UDim.new(1, 0)
+local mobStroke = Instance.new("UIStroke", MobileLockBtn)
+mobStroke.Color = Color3.fromRGB(0, 255, 200)
+mobStroke.Thickness = 2
+
+local function toggleCameraLock()
+    cameraLockActive = not cameraLockActive
+    if cameraLockActive then
+        lockedTarget = getClosestPlayer()
+        if lockedTarget then
+            createTargetIndicator(lockedTarget)
+            if lockConn then lockConn:Disconnect() end
+            lockConn = RunService.RenderStepped:Connect(function(dt)
+                if not cameraLockActive or not lockedTarget or not lockedTarget.Parent then
+                    cameraLockActive = false
+                    removeTargetIndicator()
+                    if lockConn then lockConn:Disconnect() end
+                    MobileLockBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 30)
+                    mobStroke.Color = Color3.fromRGB(0, 255, 200)
+                    return
+                end
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, lockedTarget.Position), math.clamp(dt * 25, 0.1, 1))
+            end)
+            MobileLockBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+            mobStroke.Color = Color3.fromRGB(255, 255, 255)
+        else
+            cameraLockActive = false
+        end
+    else
+        cameraLockActive = false
+        removeTargetIndicator()
+        if lockConn then lockConn:Disconnect(); lockConn = nil end
+        MobileLockBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 30)
+        mobStroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end
+
+MobileLockBtn.MouseButton1Click:Connect(toggleCameraLock)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        toggleCameraLock()
+    end
+end)
+
+-- ============================================================================
+-- 2. GIAO DIỆN CHÍNH (CYBER GLASSMORPHISM UI)
+-- ============================================================================
+local ToggleBtn = Instance.new("TextButton", ScreenGui)
+ToggleBtn.Name = "ToggleMenu"
+ToggleBtn.Position = UDim2.new(0, 25, 0.35, 0)
+ToggleBtn.Size = UDim2.new(0, 52, 0, 52)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(8, 10, 15)
+ToggleBtn.BackgroundTransparency = 0.3
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Text = "SILE"
+ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 200)
+ToggleBtn.TextSize = 10
+
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
+local ToggleStroke = Instance.new("UIStroke", ToggleBtn)
+ToggleStroke.Color = Color3.fromRGB(0, 255, 200)
+ToggleStroke.Thickness = 2
+
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.Name = "MainFrame"
+MainFrame.BackgroundColor3 = Color3.fromRGB(5, 7, 12)
+MainFrame.BackgroundTransparency = 0.25
+MainFrame.Position = UDim2.new(0.22, 0, 0.12, 0)
+MainFrame.Size = UDim2.new(0, 540, 0, 580)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color3.fromRGB(0, 255, 200)
+MainStroke.Thickness = 2
+MainStroke.Transparency = 0.2
+
+local TopBar = Instance.new("Frame", MainFrame)
+TopBar.Size = UDim2.new(1, 0, 0, 42)
+TopBar.BackgroundColor3 = Color3.fromRGB(10, 14, 22)
+TopBar.BackgroundTransparency = 0.3
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
+
+local TitleLabel = Instance.new("TextLabel", TopBar)
+TitleLabel.Size = UDim2.new(0, 350, 1, 0)
+TitleLabel.Position = UDim2.new(0, 16, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "⚡ SILE MASTER SUITE v7.5"
+TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
+TitleLabel.TextSize = 13
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local MinimizeBtn = Instance.new("TextButton", TopBar)
+MinimizeBtn.Position = UDim2.new(1, -72, 0.15, 0)
+MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+MinimizeBtn.BackgroundTransparency = 0.3
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 12
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 8)
+
+local CloseBtn = Instance.new("TextButton", TopBar)
+CloseBtn.Position = UDim2.new(1, -38, 0.15, 0)
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 40, 60)
+CloseBtn.BackgroundTransparency = 0.3
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 11
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
+
+local ContentContainer = Instance.new("ScrollingFrame", MainFrame)
+ContentContainer.Position = UDim2.new(0, 14, 0, 54)
+ContentContainer.Size = UDim2.new(1, -28, 1, -66)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.ScrollBarThickness = 5
+ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 1100)
+
+local UIList = Instance.new("UIListLayout", ContentContainer)
+UIList.Padding = UDim.new(0, 10)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function createFeatureCard(titleText, descText, callback)
+    local card = Instance.new("Frame", ContentContainer)
+    card.Size = UDim2.new(1, 0, 0, 68)
+    card.BackgroundColor3 = Color3.fromRGB(8, 11, 18)
+    card.BackgroundTransparency = 0.4
+    
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+    local cardStroke = Instance.new("UIStroke", card)
+    cardStroke.Color = Color3.fromRGB(0, 255, 200)
+    cardStroke.Thickness = 1.2
+    cardStroke.Transparency = 0.4
+    
+    local title = Instance.new("TextLabel", card)
+    title.Position = UDim2.new(0, 14, 0, 10)
+    title.Size = UDim2.new(0, 320, 0, 22)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.Text = titleText
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 12
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local desc = Instance.new("TextLabel", card)
+    desc.Position = UDim2.new(0, 14, 0, 32)
+    desc.Size = UDim2.new(0, 320, 0, 24)
+    desc.BackgroundTransparency = 1
+    desc.Font = Enum.Font.Gotham
+    desc.Text = descText
+    desc.TextColor3 = Color3.fromRGB(150, 180, 210)
+    desc.TextSize = 10
+    desc.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local btn = Instance.new("TextButton", card)
+    btn.Position = UDim2.new(1, -120, 0.16, 0)
+    btn.Size = UDim2.new(0, 106, 0, 44)
+    btn.BackgroundColor3 = Color3.fromRGB(12, 22, 35)
+    btn.BackgroundTransparency = 0.3
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = "TOGGLE"
+    btn.TextColor3 = Color3.fromRGB(0, 255, 200)
+    btn.TextSize = 11
+    
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local btnStroke = Instance.new("UIStroke", btn)
+    btnStroke.Color = Color3.fromRGB(0, 255, 200)
+    btnStroke.Thickness = 1.5
+    
+    btn.MouseButton1Click:Connect(function()
+        callback(btn, cardStroke)
+    end)
+    
+    return card
+end
+
+-- ============================================================================
+-- 3. CÁC MODULE CHỨC NĂNG BỔ SUNG
+-- ============================================================================
+local fixLagActive = false
+local originalStates = {}
+local originalLightingProps = {}
+local descendantConn = nil
+
+createFeatureCard("🚀 Fix Lag Booster", "Tắt hiệu ứng, hạt & bóng đổ tối ưu FPS", function(btn, stroke)
+    fixLagActive = not fixLagActive
+    if fixLagActive then
+        originalLightingProps.GlobalShadows = Lighting.GlobalShadows
+        Lighting.GlobalShadows = false
+        for _, child in ipairs(Lighting:GetChildren()) do
+            if child:IsA("PostEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("SunRaysEffect") then
+                originalLightingProps[child] = child.Enabled
+                child.Enabled = false
+            end
+        end
+        local function process(obj)
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                if originalStates[obj] == nil then originalStates[obj] = obj.Enabled; obj.Enabled = false end
+            end
+        end
+        for _, desc in ipairs(Workspace:GetDescendants()) do process(desc) end
+        descendantConn = Workspace.DescendantAdded:Connect(process)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if descendantConn then descendantConn:Disconnect(); descendantConn = nil end
+        Lighting.GlobalShadows = originalLightingProps.GlobalShadows or true
+        for obj, state in pairs(originalLightingProps) do if obj and obj.Parent then obj.Enabled = state end end
+        originalStates = {}
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local fullBrightActive = false
+local origBright = 1
+createFeatureCard("💡 Full Brightness", "Chiếu sáng toàn bộ map không cần đèn", function(btn, stroke)
+    fullBrightActive = not fullBrightActive
+    if fullBrightActive then
+        origBright = Lighting.Brightness
+        Lighting.Brightness = 2
+        Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        Lighting.Brightness = origBright
+        Lighting.Ambient = Color3.new(0, 0, 0)
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local speedWalkActive = false
+local speedConn = nil
+createFeatureCard("🏃 Speed Walk Boost", "Tăng tốc độ di chuyển nhân vật (Speed 32)", function(btn, stroke)
+    speedWalkActive = not speedWalkActive
+    if speedWalkActive then
+        speedConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChildOfClass("Humanoid") then char.Humanoid.WalkSpeed = 32 end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if speedConn then speedConn:Disconnect(); speedConn = nil end
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChildOfClass("Humanoid") then char.Humanoid.WalkSpeed = 16 end
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local highJumpActive = false
+local jumpConn = nil
+createFeatureCard("🦘 High Jump Boost", "Nhảy cao vượt trội (Jump Power 100)", function(btn, stroke)
+    highJumpActive = not highJumpActive
+    if highJumpActive then
+        jumpConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChildOfClass("Humanoid") then char.Humanoid.JumpPower = 100 end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if jumpConn then jumpConn:Disconnect(); jumpConn = nil end
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChildOfClass("Humanoid") then char.Humanoid.JumpPower = 50 end
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local espActive = false
+local espTable = {}
+createFeatureCard("👁️ Player ESP & HP", "Hiện khung highlight và máu địch xuyên tường", function(btn, stroke)
+    espActive = not espActive
+    if espActive then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hl = Instance.new("Highlight", p.Character)
+                hl.FillColor = Color3.fromRGB(255, 50, 50)
+                espTable[p] = hl
+            end
+        end
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        for _, hl in pairs(espTable) do if hl then hl:Destroy() end end
+        espTable = {}
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local flyActive = false
+local flyConn = nil
+createFeatureCard("🕊️ 3D Camera Fly", "Bay tự do theo hướng camera (Tốc độ cao)", function(btn, stroke)
+    flyActive = not flyActive
+    if flyActive then
+        flyConn = RunService.RenderStepped:Connect(function()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum then return end
+            hum.PlatformStand = true
+            local moveDir = hum.MoveDirection
+            if moveDir.Magnitude > 0 then
+                hrp.AssemblyLinearVelocity = (Camera.CFrame.LookVector * moveDir.Z * -1 + Camera.CFrame.RightVector * moveDir.X).Unit * 60
+            else
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if flyConn then flyConn:Disconnect(); flyConn = nil end
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hum then hum.PlatformStand = false end
+            if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) end
+        end
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local noclipActive = false
+local noclipConn = nil
+createFeatureCard("👻 Ground Noclip", "Đi xuyên tường và vật thể trong map", function(btn, stroke)
+    noclipActive = not noclipActive
+    if noclipActive then
+        noclipConn = RunService.Stepped:Connect(function()
+            local char = LocalPlayer.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then part.CanCollide = false end
+                end
+            end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local spinActive = false
+local spinConn = nil
+createFeatureCard("🌀 Spin Bot", "Xoay vòng nhân vật cực nhanh [Phím G]", function(btn, stroke)
+    spinActive = not spinActive
+    if spinActive then
+        spinConn = RunService.RenderStepped:Connect(function()
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(80), 0) end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if spinConn then spinConn:Disconnect(); spinConn = nil end
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+local hitboxActive = false
+local hitboxConn = nil
+local origSizes = {}
+createFeatureCard("⚡ Hitbox Expander (12x12)", "Mở rộng kích thước hitbox địch giúp đánh luôn trúng", function(btn, stroke)
+    hitboxActive = not hitboxActive
+    if hitboxActive then
+        hitboxConn = RunService.Heartbeat:Connect(function()
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = p.Character.HumanoidRootPart
+                    if not origSizes[hrp] then origSizes[hrp] = hrp.Size end
+                    hrp.Size = Vector3.new(12, 12, 12)
+                    hrp.Transparency = 0.65
+                    hrp.CanCollide = false
+                end
+            end
+        end)
+        btn.Text = "ACTIVE"; btn.TextColor3 = Color3.fromRGB(0, 255, 100); stroke.Color = Color3.fromRGB(0, 255, 100)
+    else
+        if hitboxConn then hitboxConn:Disconnect(); hitboxConn = nil end
+        for hrp, sz in pairs(origSizes) do
+            if hrp and hrp.Parent then hrp.Size = sz; hrp.Transparency = 1; hrp.CanCollide = true end
+        end
+        origSizes = {}
+        btn.Text = "TOGGLE"; btn.TextColor3 = Color3.fromRGB(0, 255, 200); stroke.Color = Color3.fromRGB(0, 255, 200)
+    end
+end)
+
+-- ============================================================================
+-- 4. TOGGLE & MINIMIZE LOGIC
+-- ============================================================================
+ToggleBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+local isMinimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    ContentContainer.Visible = not isMinimized
+    if isMinimized then
+        MainFrame.Size = UDim2.new(0, 540, 0, 42)
+        MinimizeBtn.Text = "+"
+    else
+        MainFrame.Size = UDim2.new(0, 540, 0, 580)
+        MinimizeBtn.Text = "-"
+    end
+end)
